@@ -2,41 +2,31 @@
 
 
 from __future__ import print_function
-import os
-import sys
-sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)
 
 # core
 import logging
-import pprint
-import re
-import sys
-import time
-
 
 # pypi
 import argh
 
-
 # local
-
 
 logging.basicConfig(
     format='%(lineno)s %(message)s',
     level=logging.WARN
 )
 
-
-def main(direction, entry, atr):
+def main(direction, entry, swing, atr):
 
     entry = float(entry)
+    swing = float(swing)
     atr   = float(atr)
 
     if direction == 'long':
-        sl = entry - atr
+        sl = swing - atr
         tp = entry + (2 * atr)
     elif direction == 'short':
-        sl = entry + atr
+        sl = swing + atr
         tp = entry - (2 * atr)
 
     print("For {0} on an entry of {1}, SL={2} and TP={3}".format(
