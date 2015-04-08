@@ -76,6 +76,18 @@ class Trader(object):
 
 
 t = Trader(oanda, 'M15')
+
+# Goal: A graph similar to what I have at Oanda visually
+# Main graph is candlesticks with 50 SMA
+# subplot2grid( (y_cells, x_cells), (y_upper_left,x_upper_left) )
+# subplot2grid( (6,4), (0,0), rowspan=4, colspan=4)
+
+# below main is Stochastic
+# subplot2grid( (6,4), (4,0), rowspan=1, colspan=4)
+
+# below that is ATR
+# subplot2grid( (6,4), (5,0), rowspan=1, colspan=4)
+
 t.drawbox(t.inputs['close'])
 t.sma()
 t.stochastic()
