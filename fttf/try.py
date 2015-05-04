@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+
 # core
 from datetime import datetime
 
@@ -11,9 +12,7 @@ import numpy
 import oandapy
 import talib
 
-
 # local
-
 oanda = oandapy.API(
     environment="practice",
     access_token="09e045ddd077887b7430cca657bb22cd-945b6dc2ec3fc1f43a39f6481e27cfcf")
@@ -75,10 +74,8 @@ class Trader(object):
         return d
 
     def sma(self, period=50):
-        candles = self.candles
-        close_ask = numpy.array([candle['closeAsk'] for candle in candles])
-        sma = talib.SMA(close_ask, timeperiod=period)
-        print "SMA=", sma
+        sma = talib.abstract.SMA(self._inputs, timeperiod=period)
+        return sma
 
     def stochastic(self, fast_k=14, slow_k=3, fast_d=3, slow_d=3):
         candles = self.candles
@@ -114,6 +111,10 @@ class Grapher(object):
             self.axis['ohlc'],
             quotes, width=0.6)
 
+    def draw_sma(self, seq):
+        label1 = 'SMA(50)'
+        self.axis['ohlc'].plot(seq, '#e1edf9', label=label1, linewidth=5)
+
     def draw_stochastic(self, seq):
         self.axis['stochastic'].plot(seq)
 
@@ -134,6 +135,7 @@ grapher = Grapher()
 grapher.simple_ohlc(trading.inputs['close'])
 grapher.draw_stochastic(trading.stochastic())
 grapher.draw_atr(trading.atr())
+grapher.draw_sma(trading.sma())
 
 plt.show()
 
