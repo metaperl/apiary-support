@@ -1,10 +1,32 @@
 #!/usr/bin/env python
 
+# Goal: A graph similar to what I have at Oanda visually
+# Main graph is candlesticks with 50 SMA
+# subplot2grid( (y_cells, x_cells), (y_upper_left,x_upper_left) )
+# subplot2grid( (6,4), (0,0), rowspan=4, colspan=4)
+
+# below main is Stochastic
+# subplot2grid( (6,4), (4,0), rowspan=1, colspan=4)
+
+# below that is ATR
+# subplot2grid( (6,4), (5,0), rowspan=1, colspan=4)
+
+
+
+# http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:stochastic_oscillator_fast_slow_and_full
+
+# Notes:
+# http://matplotlib.org/users/gridspec.html
+# subplot2grid((ygrid,xgrid), (y,x))  # takes rowspan and colspan args which
+                                      # which default to 1
+
 
 # core
 from datetime import datetime
 
 # 3rd party
+import argh
+import enum
 from matplotlib.finance import candlestick_ohlc
 import matplotlib.pyplot as plt
 import matplotlib
@@ -13,9 +35,18 @@ import oandapy
 import talib
 
 # local
-oanda = oandapy.API(
-    environment="practice",
-    access_token="09e045ddd077887b7430cca657bb22cd-945b6dc2ec3fc1f43a39f6481e27cfcf")
+import config
+import savefig
+
+
+oanda = None
+def connect_to(env):
+    global oanda
+    oanda = oandapy.API(
+        environment=env,
+        access_token=config.access_token[env]
+    )
+
 
 # # Get price for an instrument
 # response = oanda.get_prices(instruments="EUR_USD")
@@ -28,13 +59,24 @@ oanda = oandapy.API(
 # prices = response.get("candles")
 # print prices
 
+def loop_forever():
+    while True:
+        pass
+
+
+class Trend(enum.Enum):
+    up = 1
+    neutral = 0
+    down = -1
+
 
 class Trader(object):
 
-    def __init__(self, oanda, granularity='H1', count=3500):
+    def __init__(self, oanda, grapher, granularity='H1', count=3500):
         self.oanda = oanda
         self.granularity = granularity
         self.count = count
+        self.grapher = grapher
 
     @property
     def candles(self):
@@ -70,12 +112,16 @@ class Trader(object):
              candle['lowAsk'], candle['closeAsk'],
              candle['volume'])
             for candle in self.candles]
-        #print d[0]
+        #  print d[0]
         return d
 
     def sma(self, period=50):
-        sma = talib.abstract.SMA(self._inputs, timeperiod=period)
-        return sma
+        self.sma = talib.abstract.SMA(self._inputs, timeperiod=period)
+        import numpy
+        self.m_sma = numpy.diff(self.sma)  # the slope of the SMA 50
+        print "SMA={0}\nM_SMA={1}".format(
+            self.sma[-3:], self.m_sma[-2:])
+        return self.sma
 
     def stochastic(self, fast_k=14, slow_k=3, fast_d=3, slow_d=3):
         candles = self.candles
@@ -83,7 +129,11 @@ class Trader(object):
             self.inputs,
             fast_k, slow_k, talib.MA_Type.SMA, slow_d,
             talib.MA_Type.EMA)
-        #print "SLOWK, SLOWD", slowk, slowd, type(slowk), type(slowd)
+        #  print "SLOWK, SLOWD", slowk, slowd, type(slowk), type(slowd)
+        self.stoch = slowk
+        self.m_stoch = numpy.diff(slowk)
+        print "stoch={0}\nM_stoch={1}".format(
+            slowk[-3:], self.m_stoch[-2:])
         return slowk
 
     def atr(self):
@@ -91,10 +141,90 @@ class Trader(object):
             self.inputs)
         return real
 
-    def simple_y(self, grapher):
-        d = [c[0] for c in trading.candlestick_ohlc_data]
-        print "Length of data={0}".format(len(d))
-        grapher.simple_y(d)
+    # def simple_y(self, grapher):
+    #     d = [c[0] for c in trading.candlestick_ohlc_data]
+    #     print "Length of data={0}".format(len(d))
+    #     grapher.simple_y(d)
+
+    @property
+    def overall_trend(self):
+        if self.m_sma[-1] > 0:
+            self.trend = Trend.up
+        elif self.m_sma[-1] < 0:
+            self.trend = Trend.down
+        else:
+            self.trend = Trend.neutral
+
+        return self.trend
+
+    @property
+    def stochastic_trend(self):
+        if self.m_stoch[-1] > 0:
+            self.stoch_trend = Trend.up
+        elif self.m_stoch[-1] < 0:
+            self.stoch_trend = Trend.down
+        else:
+            self.stoch_trend = Trend.neutral
+
+        return self.stoch_trend
+
+    @property
+    def stochastic_positioned(self):
+        if self.overall_trend == Trend.up:
+            if self.stoch[-2] < 50:
+                return True
+
+        if self.overall_trend == Trend.down:
+            if self.stoch[-2] > 50:
+                return True
+
+        return False
+
+    @property
+    def account(self):
+        aid = self.oanda.get_accounts()['accounts'][0]['accountId']
+        print "Accounts: {0}".format(aid)
+        return aid
+
+    def open_trade(self):
+        side = 'buy'
+        if self.overall_trend == Trend.up:
+            print "Opening BUY"
+            side = 'buy'
+        else:
+            print "Opening SELL"
+            side = 'sell'
+
+        inst = 'EUR_USD'
+        units = 100000 # 1 standard lot
+
+        self.oanda.create_order(
+            self.account,
+            instrument=inst,
+            units=units,
+            side=side,
+            type='market',
+            trailingStop=5
+        )
+
+    def trade(self):
+        print "Overall trend: {0}. Stochastic trend {1}".format(
+            self.overall_trend, self.stochastic_trend)
+        axis = self.grapher.axis['ohlc']
+        axis.set_title("Overall: {0}".format(self.overall_trend), loc='left')
+        axis.set_title("Stochastic: {0}".format(self.stochastic_trend))
+        if self.overall_trend == self.stochastic_trend:
+            if self.stochastic_positioned:
+                print "Stochastic value of {0} is positioned".format(
+                    self.stoch[-2])
+                axis.set_title("Trading. Stoch={0}.".format(self.stoch[-2]),
+                          loc='right')
+                self.open_trade()
+            else:
+                print "Stochastic value of {0} is not positioned".format(
+                    self.stoch[-2])
+                axis.set_title("No Trade.Stoch={0}.".format(self.stoch[-2]),
+                          loc='right')
 
 
 class Grapher(object):
@@ -128,36 +258,36 @@ class Grapher(object):
         self.axis['atr'].plot(seq)
 
 
-#t = Trader(oanda, 'M15')
-trading = Trader(oanda, 'H1', count=250)
-grapher = Grapher()
+def main(
+        env='practice', show_graph=False, save_graph=False,
+        trade=False, stayup=False,
+        timeframe='M15'):
 
-grapher.simple_ohlc(trading.inputs['close'])
-grapher.draw_stochastic(trading.stochastic())
-grapher.draw_atr(trading.atr())
-grapher.draw_sma(trading.sma())
+    connect_to(env)
 
-plt.show()
-
-while True:
-    pass
-
-# Goal: A graph similar to what I have at Oanda visually
-# Main graph is candlesticks with 50 SMA
-# subplot2grid( (y_cells, x_cells), (y_upper_left,x_upper_left) )
-# subplot2grid( (6,4), (0,0), rowspan=4, colspan=4)
-
-# below main is Stochastic
-# subplot2grid( (6,4), (4,0), rowspan=1, colspan=4)
-
-# below that is ATR
-# subplot2grid( (6,4), (5,0), rowspan=1, colspan=4)
+    grapher = Grapher()
+    trading = Trader(oanda, grapher, timeframe, count=100)
 
 
+    grapher.simple_ohlc(trading.inputs['close'])
+    grapher.draw_stochastic(trading.stochastic())
+    grapher.draw_atr(trading.atr())
+    grapher.draw_sma(trading.sma())
 
-# http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:stochastic_oscillator_fast_slow_and_full
+    if trade:
+        trading.trade()
+        print "Trading algorithm completed."
+        if show_graph:
+            plt.show()
+        if save_graph:
+            savefig.save(
+                savefig.datetime_as_file())
+        if stayup:
+            loop_forever()
+    else:
+        plt.show()
+        loop_forever()
 
-# Notes:
-# http://matplotlib.org/users/gridspec.html
-# subplot2grid((ygrid,xgrid), (y,x))  # takes rowspan and colspan args which
-                                      # which default to 1
+
+if __name__ == '__main__':
+    argh.dispatch_command(main)

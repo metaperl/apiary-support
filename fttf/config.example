@@ -1,0 +1,5 @@
+access_token = dict()
+
+access_token['practice'] = "09e045ddd077887b7430cca657bb22cd-945b6dc2ec3fc1f43a39f6481e27cfcf")
+
+access_token['live'] = "???"
