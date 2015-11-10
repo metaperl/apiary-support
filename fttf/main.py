@@ -72,11 +72,17 @@ class Trend(enum.Enum):
 
 class Trader(object):
 
-    def __init__(self, oanda, grapher, granularity='H1', count=3500):
+    def __init__(self, oanda, grapher,
+                 granularity='H1', count=100,
+                 units=100000,
+                 instrument=None):
         self.oanda = oanda
         self.granularity = granularity
         self.count = count
         self.grapher = grapher
+        self.instrument = instrument
+        if instrument is None:
+            raise Exception("Instrument must be defined")
 
     @property
     def candles(self):
@@ -85,7 +91,7 @@ class Trader(object):
     @property
     def history(self):
         self._history = self.oanda.get_history(
-            instrument="EUR_USD",
+            instrument=self.instrument,
             count=self.count,
             granularity=self.granularity)
         return self._history
@@ -124,7 +130,6 @@ class Trader(object):
         return self.sma
 
     def stochastic(self, fast_k=14, slow_k=3, fast_d=3, slow_d=3):
-        candles = self.candles
         slowk, slowd = talib.abstract.STOCH(
             self.inputs,
             fast_k, slow_k, talib.MA_Type.SMA, slow_d,
@@ -171,12 +176,14 @@ class Trader(object):
     @property
     def stochastic_positioned(self):
         if self.overall_trend == Trend.up:
-            if self.stoch[-2] < 50:
-                return True
+            if self.stoch[-3] < self.stoch[-2]:
+                if self.stoch[-2] > self.stoch[-1]:
+                    return self.stoch[-2] < 50
 
         if self.overall_trend == Trend.down:
-            if self.stoch[-2] > 50:
-                return True
+            if self.stoch[-3] > self.stoch[-2]:
+                if self.stoch[-2] < self.stoch[-1]:
+                    return self.stoch[-2] > 50
 
         return False
 
@@ -195,36 +202,39 @@ class Trader(object):
             print "Opening SELL"
             side = 'sell'
 
-        inst = 'EUR_USD'
-        units = 100000 # 1 standard lot
+        units = self.units
+        trailing_stop = 10
 
         self.oanda.create_order(
             self.account,
-            instrument=inst,
+            instrument=self.instrument,
             units=units,
             side=side,
             type='market',
-            trailingStop=5
+            trailingStop=trailing_stop
         )
 
     def trade(self):
-        print "Overall trend: {0}. Stochastic trend {1}".format(
+        print "SMA: {0}. Stoch trend {1}".format(
             self.overall_trend, self.stochastic_trend)
         axis = self.grapher.axis['ohlc']
-        axis.set_title("Overall: {0}".format(self.overall_trend), loc='left')
-        axis.set_title("Stochastic: {0}".format(self.stochastic_trend))
+        axis.set_title("SMA: {0}".format(self.overall_trend), loc='left')
+        axis.set_title("Stoch: {0}".format(self.stochastic_trend))
         if self.overall_trend == self.stochastic_trend:
             if self.stochastic_positioned:
-                print "Stochastic value of {0} is positioned".format(
+                print "Stoch {0} is positioned".format(
                     self.stoch[-2])
-                axis.set_title("Trading. Stoch={0}.".format(self.stoch[-2]),
-                          loc='right')
+                axis.set_title("Trading ({0}).".format(
+                    int(self.stoch[-2])), loc='right')
                 self.open_trade()
+                return True
             else:
-                print "Stochastic value of {0} is not positioned".format(
+                print "Stoch {0} is not positioned".format(
                     self.stoch[-2])
-                axis.set_title("No Trade.Stoch={0}.".format(self.stoch[-2]),
-                          loc='right')
+                axis.set_title("No Trade ({0}).".format(
+                    int(self.stoch[-2])), loc='right')
+
+        return False
 
 
 class Grapher(object):
@@ -258,35 +268,41 @@ class Grapher(object):
         self.axis['atr'].plot(seq)
 
 
+# http://developer.oanda.com/rest-live/rates/#retrieveInstrumentHistory
 def main(
         env='practice', show_graph=False, save_graph=False,
         trade=False, stayup=False,
-        timeframe='M15'):
+        instruments='EUR_USD',
+        timeframes='M15'
+):
 
     connect_to(env)
 
-    grapher = Grapher()
-    trading = Trader(oanda, grapher, timeframe, count=100)
+    for instrument in instruments.split(","):
+        for timeframe in timeframes.split(","):
 
+            grapher = Grapher()
+            trading = Trader(oanda, grapher, timeframe, instrument=instrument)
+            grapher.simple_ohlc(trading.inputs['close'])
+            grapher.draw_stochastic(trading.stochastic())
+            grapher.draw_atr(trading.atr())
+            grapher.draw_sma(trading.sma())
 
-    grapher.simple_ohlc(trading.inputs['close'])
-    grapher.draw_stochastic(trading.stochastic())
-    grapher.draw_atr(trading.atr())
-    grapher.draw_sma(trading.sma())
-
-    if trade:
-        trading.trade()
-        print "Trading algorithm completed."
-        if show_graph:
-            plt.show()
-        if save_graph:
-            savefig.save(
-                savefig.datetime_as_file())
-        if stayup:
-            loop_forever()
-    else:
-        plt.show()
-        loop_forever()
+            if trade:
+                traded = trading.trade()
+                print "Trading algorithm completed."
+                if show_graph:
+                    plt.show()
+                if save_graph:
+                    savefig.save(
+                        savefig.datetime_as_file(instrument,timeframe,traded))
+                if stayup:
+                    loop_forever()
+                plt.close('all')
+            else:
+                traded = False
+                plt.show()
+                loop_forever()
 
 
 if __name__ == '__main__':

@@ -56,8 +56,12 @@ def save(path, ext='png', close=True, verbose=True):
         print("Done")
 
 
-def datetime_as_file():
+def datetime_as_file(instrument,timeframe,traded=False):
+    if traded:
+        flag = 'Traded'
+    else:
+        flag = ''
     n = datetime.now()
-    s = "{0.year}/{0.month:02}/{0.day:02}/{0.hour:02}:{0.minute:02}".format(n)
+    s = "data/{0.year}/{0.month:02}/{0.day:02}/{1}-{2}-{3}-{0.hour:02}:{0.minute:02}".format(n, flag, instrument,timeframe)
     print s
     return s
