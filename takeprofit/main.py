@@ -5,6 +5,7 @@ from __future__ import print_function
 
 # core
 import logging
+import decimal
 
 # pypi
 import argh
@@ -17,13 +18,19 @@ logging.basicConfig(
 )
 
 one_percent = 1.0 / 100.0
+two_percent = 2.0 / 100.0
 
-def main(entry):
+decimal.getcontext().prec = 8
 
-    entry = float(entry)
-    tp = entry * one_percent + entry
+def main(entry, percent=6):
 
-    print("On an entry of {0}, TP={1}".format(entry, tp))
+    entry = decimal.Decimal(entry)
+    x_percent = decimal.Decimal(percent / 100.0)
+
+    tp = entry * x_percent + entry
+
+    print("On an entry of {0:f}, TP={1:f} for a {2} percent gain".format(
+        entry, tp, percent))
 
 
 if __name__ == '__main__':
