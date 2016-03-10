@@ -29,7 +29,7 @@ def main(entry, percent=6):
 
     tp = entry * x_percent + entry
 
-    print("On an entry of {0:f}, TP={1:f} for a {2} percent gain".format(
+    print("On an entry of {0:f}, TP={1:.8f} for a {2} percent gain".format(
         entry, tp, percent))
 
 
